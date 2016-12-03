@@ -1,11 +1,7 @@
 import random
 
 class RoutePlanner(object):
-<<<<<<< HEAD
-    """Silly route planner that is meant for a perpendicular grid network."""
-=======
     """ Complex route planner that is meant for a perpendicular grid network. """
->>>>>>> 489bd273bbfad03bd880e00b356660c530f56b85
 
     def __init__(self, env, agent):
         self.env = env
@@ -13,35 +9,7 @@ class RoutePlanner(object):
         self.destination = None
 
     def route_to(self, destination=None):
-<<<<<<< HEAD
-        self.destination = destination if destination is not None else random.choice(self.env.intersections.keys())
-        print "RoutePlanner.route_to(): destination = {}".format(destination)  # [debug]
 
-    def next_waypoint(self):
-        location = self.env.agent_states[self.agent]['location']
-        heading = self.env.agent_states[self.agent]['heading']
-        delta = (self.destination[0] - location[0], self.destination[1] - location[1])
-        if delta[0] == 0 and delta[1] == 0:
-            return None
-        elif delta[0] != 0:  # EW difference
-            if delta[0] * heading[0] > 0:  # facing correct EW direction
-                return 'forward'
-            elif delta[0] * heading[0] < 0:  # facing opposite EW direction
-                return 'right'  # long U-turn
-            elif delta[0] * heading[1] > 0:
-                return 'left'
-            else:
-                return 'right'
-        elif delta[1] != 0:  # NS difference (turn logic is slightly different)
-            if delta[1] * heading[1] > 0:  # facing correct NS direction
-                return 'forward'
-            elif delta[1] * heading[1] < 0:  # facing opposite NS direction
-                return 'right'  # long U-turn
-            elif delta[1] * heading[0] > 0:
-                return 'right'
-            else:
-                return 'left'
-=======
         """ Select the destination if one is provided, otherwise choose a random intersection. """
 
         self.destination = destination if destination is not None else random.choice(self.env.intersections.keys())
@@ -67,8 +35,8 @@ class RoutePlanner(object):
         # First check if destination is at location
         if dx == 0 and dy == 0:
             return None
-        
-        # Next check if destination is cardinally East or West of location    
+
+        # Next check if destination is cardinally East or West of location
         elif dx != 0:
 
             if dx * heading[0] > 0:  # Heading the correct East or West direction
@@ -107,4 +75,3 @@ class RoutePlanner(object):
                 return 'right'
             else:
                 return 'left'
->>>>>>> 489bd273bbfad03bd880e00b356660c530f56b85
