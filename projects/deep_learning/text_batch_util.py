@@ -2,10 +2,11 @@ import string
 import numpy as np
 from nltk import tokenize
 
-text = "The call to basic_rnn_seq2seq returns two arguments: outputs and states. Both of them are lists " \
-       "of tensors of the same length as decoder_inputs. Naturally, outputs correspond to the outputs of " \
-       "the decoder in each time-step, in the first picture above that would be W, X, Y, Z, EOS. " \
-       "The returned states represent the internal state of the decoder at every time-step."
+text = "These things are usually done by dedicated sentence splitter tools library modules. " \
+       "Trying to do with regexes alone is not going to produce good results. " \
+       "The better splitters have been trained. "
+
+sentence = "The quick brown fox jumps over the lazy dog."
 
 
 class BatchUtil(object):
@@ -47,10 +48,15 @@ class EncodeDecodeUtil(object):
     '''
     EncodeDecodeUtil is used to process each sentences and provide 1-hot encoding and decoding.
     '''
-    def __init__(self, vocabulary_size=30):
+    def __init__(self, vocabulary_size=30, default_input=True):
         self.vocabulary_size = vocabulary_size  # include 26 letters, space, "*" as GO and "-" as padding symbols.
         self.buckets = [10, 20, 40, 60, 100]
         self.first_letter = ord(string.ascii_lowercase[0])
+
+        self.default_input = default_input
+        if default_input:
+            self.sentence = sentence.lower()
+            self.text = text.lower()
 
     def __char2id(self, char):
 
@@ -85,14 +91,18 @@ class EncodeDecodeUtil(object):
     def __sentence_size(self, sentence):
         __sentence = sentence
         for i in self.buckets:
-            print(float(len(__sentence)))
-            print(i + 2)
             if (float(len(__sentence) + 1) // i) < 1:
                 #__lenght = i + 2 + (i + 2) % len(__sentence)
-                return i # TODO: need to account here for paddings.
+                return i
 
-    def encode(self, plain_sentence):
-        plain_sentence = plain_sentence.lower()
+    def encode(self, plain_sentence = None):
+
+        if self.default_input:
+            plain_sentence = self.sentence
+        else:
+            plain_sentence = plain_sentence.lower()
+
+
         print("plain sent",plain_sentence)
         encoded_length = self.__sentence_size(plain_sentence)
         encoded_sentence = np.zeros(shape=(encoded_length, self.vocabulary_size))
@@ -129,15 +139,9 @@ class EncodeDecodeUtil(object):
             text += self.decode(enc_text[i,:])
         return text
 
-enc = EncodeDecodeUtil()
-
-sentence = " abcde dfgdsfg sdfg."
-text = "These things are usually done by dedicated sentence splitter tools library modules. " \
-       "Trying to do with regexes alone is not going to produce good results. " \
-       "The better splitters have been trained. "
-
-assert enc.decode(enc.encode(sentence)) == sentence
-assert enc.decode_text(enc.encode_text(text)) == text
+enc = EncodeDecodeUtil(True)
+assert enc.decode(enc.encode()) == sentence
+#assert enc.decode_text(enc.encode_text(text)) == text
 
 #dec_txt = enc.encode(txt)
 #print("encoded", dec_txt)
