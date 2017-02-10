@@ -10,6 +10,7 @@ import numpy as np
 np.random.seed(1337)  # for reproducibility
 
 from keras.datasets import mnist
+from keras import callbacks
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation, Flatten
 from keras.layers import Convolution2D, MaxPooling2D
@@ -68,15 +69,19 @@ model.add(Flatten())
 model.add(Dense(128))
 model.add(Activation('relu'))
 model.add(Dropout(0.5))
-model.add(Dense(nb_classes))
+model.add(Dense((sequence_length+1))) # to account for sequence length + 1
 model.add(Activation('softmax'))
 
 model.compile(loss='categorical_crossentropy',
               optimizer='adadelta',
               metrics=['accuracy'])
 
-model.fit(X_train, Y_train, batch_size=batch_size, nb_epoch=nb_epoch,
-          verbose=1, validation_data=(X_test, Y_test))
+monitor = callbacks.RemoteMonitor(
+    root='http://localhost:9000', path='/publish/epoch/end/', field='data',
+    headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
+
+model.fit(X_train, Y_train_length, batch_size=batch_size, nb_epoch=nb_epoch,
+          verbose=1, validation_data=(X_test, Y_test_length), callbacks=[monitor])
 score = model.evaluate(X_test, Y_test, verbose=0)
 print('Test score:', score[0])
 print('Test accuracy:', score[1])

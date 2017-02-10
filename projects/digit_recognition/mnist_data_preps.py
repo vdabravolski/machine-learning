@@ -20,9 +20,10 @@ X_test /= 255
 
 empty_space = -1  # empty spaces will be encoded as "-1"
 nb_classes = 11  # include 10 digits and "-1" which designates empty space in digit sequence.
+max_length = 5 # max number of digits in sequence
 
 
-def generate_sequences(images, labels, out_size, max_length=5):
+def generate_sequences(images, labels, out_size, max_length=max_length):
     """
     This function is used to generate a sequences of digits out of individual images.
     The function assumes uniform distribution of sequence legths.
@@ -42,7 +43,7 @@ def generate_sequences(images, labels, out_size, max_length=5):
 
     sequences = np.empty(shape=(out_size, 28, 28 * max_length), dtype=np.float32)
     sequence_labels = np.empty(shape=(out_size, max_length, nb_classes), dtype=np.int32)
-    sequence_lengths = np.empty(shape=(out_size), dtype=np.int32)
+    sequence_lengths = np.empty(shape=(out_size, (max_length+1)), dtype=np.int32)
 
     index = 0
 
@@ -55,8 +56,11 @@ def generate_sequences(images, labels, out_size, max_length=5):
         sequences[index], tmp_labels = \
             get_sequence_image(images, labels, real_digits, noisy_digits)
 
-        sequence_labels[index] = np_utils.to_categorical(tmp_labels, nb_classes) # 1-ho
-        sequence_lengths[index] = real_digits
+        sequence_labels[index] = np_utils.to_categorical(tmp_labels, nb_classes) # 1-hot encoding
+
+        tmp_length = np.zeros((max_length+1))
+        tmp_length[real_digits] = 1
+        sequence_lengths[index] = tmp_length # 1 hot encoding
 
         index += 1
 
