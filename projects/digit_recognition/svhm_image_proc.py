@@ -111,7 +111,8 @@ class ImageProcessor(object):
         image_cropped = image[top:bottom, left:right, :]
 
         # resizing
-        image_res = misc.imresize(image_cropped, (self.cropped_size, self.cropped_size))
+        #image_res = misc.imresize(image_cropped, size=[self.cropped_size, self.cropped_size])
+        image_res = misc.imresize(image_cropped, size=(64,64)) #TODO: parametrize it one day
 
         image_res = image_res.astype('float32')
         image_res = image_res / 255  # normalize the image
@@ -130,17 +131,17 @@ class ImageProcessor(object):
 
         for i in xrange(len(self.data_raw)):
             image_name = self.data_raw[i]['filename']
-            crop_coord = self._findBBOX(self.test_data_raw[i])
+            crop_coord = self._findBBOX(self.data_raw[i])
             image_resized = self._cropResizeImage(image_name, crop_coord)
-            coord_updated, sequence_label, length = self._getUpdatedRecord(crop_coord, self.test_data_raw[i])
+            coord_updated, sequence_label, length = self._getUpdatedRecord(crop_coord, self.data_raw[i])
 
-            self.test_dataset_cropped.append([image_resized, coord_updated, length, sequence_label])
+            self.dataset_cropped.append([image_resized, coord_updated, length, sequence_label])
 
 
         #TODO: save to pickle and test.
 
 
-proc = ImageProcessor()
+proc = ImageProcessor(data_path="data/SVHM/test/")
 proc.saveProcessed()
 
 
