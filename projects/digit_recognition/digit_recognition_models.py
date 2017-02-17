@@ -86,7 +86,7 @@ test_targets = [length_cls_test, first_cls_test, second_cls_test, third_cls_test
 cls_weights = [1., 1., 1., 1., 1., 1.]
 
 
-def create_vanilla_CNN(cls_weights):
+def synth_MNIST_model(cls_weights):
     # Shared feature layers which will be used for multiple classifiers.
     main_input = Input(shape=input_shape, dtype='float32', name='main_input')
     shared = Convolution2D(nb_filters, kernel_size[0], kernel_size[1],
@@ -170,7 +170,7 @@ def predict_sequence(model, pred_input):
 
 
 
-new_model = create_vanilla_CNN(cls_weights)
+new_model = synth_MNIST_model(cls_weights)
 trained_model = train_model(model=new_model, train_inputs=X_train,
                             train_targets=train_targets, test_inputs=X_test,test_targets=test_targets, use_trained=True)
 
