@@ -3,7 +3,6 @@ import pickle
 import os
 from scipy import misc
 
-
 class ImageProcessor(object):
     def __init__(self, data_path="data/SVHM/train", data_file="dataset.p", extension=0.3, cropped_size=64):
         """
@@ -142,7 +141,11 @@ class ImageProcessor(object):
         :return: reference and filenames of the pickle
         """
         new_folder = self.data_path + folder_postfix + "/"
-        processed_filename = new_folder + "data.p"
+
+        if not os.path.exists(new_folder):
+            os.makedirs(new_folder)
+
+        processed_filename = new_folder + "dataset.p"
 
         if rewrite:
             if os.path.isfile(processed_filename):
