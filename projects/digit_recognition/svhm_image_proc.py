@@ -158,7 +158,9 @@ class ImageProcessor(object):
 
         for i in xrange(iterations):
             image_name = self.data_raw[i]['filename']
-            print(str(self.data_raw[i]['boxes']))
+            print(image_name)
+            if len(self.data_raw[i]['boxes']) > 5: #TODO: remove hardcoded limitation on the sequence. Though, it's minor
+                continue # This is to skip records with more than 5 digits.
             digits_coord = self._findBBOX(self.data_raw[i])
             image_resized, digits_coord = self._cropResizeImage(image_name, digits_coord)
             coord_updated, sequence_label, length = self._getUpdatedRecord(digits_coord, self.data_raw[i])
