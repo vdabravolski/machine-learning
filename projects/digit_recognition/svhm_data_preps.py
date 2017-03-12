@@ -2,7 +2,8 @@
 
 import h5py
 import os
-import numpy as np
+import pickle
+
 
 # The DigitStructFile is just a wrapper around the h5py data.  It basically references
 #    inf:              The input h5 matlab file
@@ -77,23 +78,17 @@ class DigitStructFile:
         return result
 
 
+# Handle train
+train_folder = "./data/SVHM/train"
+fin = os.path.join(train_folder, 'digitStruct.mat')
+dsf = DigitStructFile(fin)
+train_data = dsf.getAllDigitStructure_ByDigit()
+pickle.dump(train_data, open( "./data/SVHM/train/dataset.p", "wb"))
 
-train_folders = "/Users/dabravolski/github/machine-learning/projects/digit_recognition/data/SVHM/test"
-fin = os.path.join(train_folders, 'digitStruct.mat')
+
+# Handle test
+test_folder = "./data/SVHM/test"
+fin = os.path.join(test_folder, 'digitStruct.mat')
 dsf = DigitStructFile(fin)
 test_data = dsf.getAllDigitStructure_ByDigit()
-
-import pickle
-pickle.dump(test_data, open( "data/SVHM/test_data.p", "wb" ) )
-
-# for i in np.arange(len(train_data)):
-#     filename = train_data[i]['filename']
-#     boxes = train_data[i]['boxes']
-#     num_digit = len(boxes)
-#     labels[i, 0] = num_digit
-#     for j in np.arange(num_digit):
-#         labels[i, j+1] = boxes[j]['label']
-#         top[j] = boxes[j]['top']
-#         left[j] = boxes[j]['left']
-#         height[j] = boxes[j]['height']
-#         width[j] = boxes[j]['width']
+pickle.dump(test_data, open( "./data/SVHM/test/dataset.p", "wb"))
