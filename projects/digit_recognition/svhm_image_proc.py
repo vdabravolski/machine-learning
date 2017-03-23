@@ -79,8 +79,7 @@ class ImageProcessor(object):
             rel_left = (el['left'] - left) / (right - left)
             rel_right = (el['left'] + el['width'] - left) / (right - left)
 
-            print("relative coord:" + str([rel_top, rel_left, rel_bottom, rel_right]))
-            # coord_relative.append([rel_top, rel_left, rel_bottom, rel_right])
+            #print("relative coord:" + str([rel_top, rel_left, rel_bottom, rel_right]))
             coord_relative[idx, :] = np.asarray([rel_top, rel_left, rel_bottom, rel_right])
             tmp = np.zeros(11)  # 10 digits + empty space (encoded as 10)
             tmp[int(el['label'])] = 1
