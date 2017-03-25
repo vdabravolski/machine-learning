@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 """
 Implemetation of random search for SVHM CNN.
 """
@@ -88,12 +90,13 @@ def model(X_train, Y_train, X_test, Y_test):
     img_rows, img_cols, img_depth = 64, 64, 3
     input_shape = (img_rows, img_cols, img_depth)
 
-    batch_size = 128
+    batch_size = {{choice([128, 256, 512])}}
     nb_epoch = 12
-    nb_filters = 32
+    nb_filters = {{choice([32, 64, 128])}}
     pool_size = (2, 2)
     kernel_size = (3, 3)
-    cls_weights = [1., 1., 1., 1., 1., 1., 1.]
+    cls_weights = [1., 1., 1., 1., 1., 1., {{uniform(0, 1)}}]
+    optimizer = {{choice(['rmsprop', 'adam', 'sgd', 'adadelta'])}}
 
 
     main_input = Input(shape=input_shape, dtype='float32', name='main_input')
@@ -103,13 +106,19 @@ def model(X_train, Y_train, X_test, Y_test):
     shared = Convolution2D(nb_filters, kernel_size[0], kernel_size[1])(shared)
     shared = Activation('relu')(shared)
     shared = MaxPooling2D(pool_size=pool_size)(shared)
-    # shared = Dropout(0.25)(shared)
+
+    # Conditional extra convolutional layer
+    if conditional({{choice(['two', 'three'])}}) == 'three':
+        shared = Convolution2D(nb_filters, kernel_size[0], kernel_size[1],
+                               border_mode='valid', input_shape=input_shape)(main_input)
+        shared = Activation('relu')(shared)
+        shared = MaxPooling2D(pool_size=pool_size)(shared)
+
     shared = Dropout({{uniform(0, 1)}})(shared)
     shared = Flatten()(shared)
     shared = Dense(128)(shared)
     shared = Activation('relu')(shared)
     shared = Dropout(0.5)(shared)
-
 
     length_cls = Dense((sequence_length + 1))(shared)  # to account for sequence length + 1
     length_cls = Activation('softmax', name="length_cls")(length_cls)
@@ -144,7 +153,7 @@ def model(X_train, Y_train, X_test, Y_test):
                         'second_cls': 'categorical_crossentropy', 'third_cls': 'categorical_crossentropy',
                         'forth_cls': 'categorical_crossentropy', 'fifth_cls': 'categorical_crossentropy',
                         'coord_regr': 'mean_squared_error'},
-                  optimizer='adadelta',
+                  optimizer=optimizer,
                   metrics={'length_cls': 'accuracy', 'first_cls': 'accuracy',
                            'second_cls': 'accuracy', 'third_cls': 'accuracy',
                            'forth_cls': 'accuracy', 'fifth_cls': 'accuracy',
@@ -156,24 +165,28 @@ def model(X_train, Y_train, X_test, Y_test):
 
     checkpointer = ModelCheckpoint(filepath=directory + "/weights.hdf5", verbose=1, save_best_only=True)
     tensorboard = TensorBoard(log_dir=directory, histogram_freq=0, write_graph=True, write_images=False)
-    model.fit([X_train], Y_train, batch_size=batch_size, nb_epoch=nb_epoch,
-              verbose=1, validation_data=([X_test], Y_test), callbacks=[checkpointer, tensorboard])
+    # Todo: P2 add EarlyStopping callback
+    # Todo: P3 add LearningRateSchedule callback
+    model.fit([X_train], Y_train, batch_size=batch_size, nb_epoch=nb_epoch, verbose=1, validation_data=([X_test], Y_test), callbacks=[checkpointer, tensorboard])
 
-    score, acc = model.evaluate(X_test, Y_test, verbose=0)
 
-    print('Test accuracy:', acc)
-    return {'loss': -acc, 'status': STATUS_OK, 'model': model}
+    score = model.evaluate(X_test, Y_test, verbose=0)
+
+    print('Test accuracy:', score)
+    return {'loss': score[0], 'status': STATUS_OK, 'model': model}
 
 
 if __name__ == '__main__':
     best_run, best_model = optim.minimize(model=model,
                                           data=data,
                                           algo=tpe.suggest,
-                                          max_evals=5,
+                                          max_evals=10,
                                           trials=Trials())
     X_train, Y_train, X_test, Y_test = data()
     print("Evalutation of best performing model:")
     print(best_model.evaluate(X_test, Y_test))
+    print("Model parameters:")
+    print(best_run)
 
 
 
