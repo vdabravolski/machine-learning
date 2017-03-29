@@ -7,6 +7,7 @@ import pickle
 from keras.layers import Dense, Dropout, Activation, Flatten, Input, Convolution2D, MaxPooling2D
 from keras.callbacks import ModelCheckpoint, TensorBoard
 from keras.models import Model
+from keras.preprocessing.image import ImageDataGenerator
 import numpy as numpy
 import os
 import datetime
@@ -14,65 +15,29 @@ from hyperopt import Trials, STATUS_OK, tpe
 from hyperas import optim
 from hyperas.distributions import choice, uniform, conditional
 from ioi_metric import iou_metric_func
-
+from svhm_image_generator import custom_image_generator
 
 def data():
-    test_data = "./data/SVHM/test_processed/dataset.p"
-    test_data = pickle.load(open(test_data, 'rb'))
+    """
+    returns the keras image generators
+    """
+    batch_size = 128
+    test_gen = ImageDataGenerator()
+    test_dir_gen = test_gen.flow_from_directory('data/SVHM/test_generator', target_size=(64, 64), batch_size=batch_size,
+                                      class_mode="sparse", shuffle=False)
+    test_gen = custom_image_generator(test_dir_gen, labels_pickle="data/SVHM/test_generator/dataset.p")
 
-    img_rows = numpy.shape(test_data[0][1])[0]
-    img_cols = numpy.shape(test_data[0][1])[1]
-    img_depth = numpy.shape(test_data[0][1])[2]
+    train_gen = ImageDataGenerator()
+    train_dir_gen = train_gen.flow_from_directory('data/SVHM/train_generator', target_size=(64, 64), batch_size=batch_size,
+                                      class_mode="sparse", shuffle=False)
+    train_gen = custom_image_generator(train_dir_gen, labels_pickle="data/SVHM/train_generator/dataset.p")
 
-    X_test = numpy.zeros(shape=(len(test_data), img_rows, img_cols, img_depth))
+    return train_gen, test_gen
 
-    train_data = "./data/SVHM/train_processed/dataset.p"
-    train_data = pickle.load(open(train_data, 'rb'))
-    X_train = numpy.zeros(shape=(len(train_data), img_rows, img_cols, img_depth))
 
-    length_train = numpy.zeros(shape=(len(train_data), 6))
-    length_test = numpy.zeros(shape=(len(test_data), 6))
 
-    coord_train = numpy.zeros(shape=(len(train_data), 20))
-    coord_test = numpy.zeros(shape=(len(test_data), 20))
 
-    first_train = numpy.zeros(shape=(len(train_data), 11))
-    second_train = numpy.zeros(shape=(len(train_data), 11))
-    third_train = numpy.zeros(shape=(len(train_data), 11))
-    forth_train = numpy.zeros(shape=(len(train_data), 11))
-    fifth_train = numpy.zeros(shape=(len(train_data), 11))
-
-    first_test = numpy.zeros(shape=(len(test_data), 11))
-    second_test = numpy.zeros(shape=(len(test_data), 11))
-    third_test = numpy.zeros(shape=(len(test_data), 11))
-    forth_test = numpy.zeros(shape=(len(test_data), 11))
-    fifth_test = numpy.zeros(shape=(len(test_data), 11))
-
-    for idx, el in enumerate(test_data):
-        X_test[idx, :, :, :] = el[1]
-        length_test[idx, :] = el[3]
-        coord_test[idx, :] = numpy.asarray(el[2]).flatten()
-        first_test[idx, :] = el[4][0]
-        second_test[idx, :] = el[4][1]
-        third_test[idx, :] = el[4][2]
-        forth_test[idx, :] = el[4][3]
-        fifth_test[idx, :] = el[4][4]
-
-    for idx, el in enumerate(train_data):
-        X_train[idx, :, :, :] = el[1]
-        length_train[idx, :] = el[3]
-        coord_train[idx, :] = numpy.asarray(el[2]).flatten()
-        first_train[idx, :] = el[4][0]
-        second_train[idx, :] = el[4][1]
-        third_train[idx, :] = el[4][2]
-        forth_train[idx, :] = el[4][3]
-        fifth_train[idx, :] = el[4][4]
-
-    Y_test = [length_test, first_test, second_test, third_test, forth_test, fifth_test, coord_test]
-    Y_train = [length_train, first_train, second_train, third_train, forth_train, fifth_train, coord_train]
-    return X_train, Y_train, X_test, Y_test
-
-def model(X_train, Y_train, X_test, Y_test):
+def model(train_gen, test_gen):
     '''
     Model providing function:
 
@@ -84,20 +49,19 @@ def model(X_train, Y_train, X_test, Y_test):
         - model: specify the model just created so that we can later use it again.
     '''
 
-    numpy.random.seed(1337)
+    numpy.random.seed(8994)
     nb_classes = 11
     sequence_length = 5
     img_rows, img_cols, img_depth = 64, 64, 3
     input_shape = (img_rows, img_cols, img_depth)
 
-    batch_size = {{choice([128, 256, 512])}}
     nb_epoch = 12
     nb_filters = {{choice([32, 64, 128])}}
     pool_size = (2, 2)
     kernel_size = (3, 3)
-    cls_weights = [1., 1., 1., 1., 1., 1., {{uniform(0, 1)}}]
-    optimizer = {{choice(['rmsprop', 'adam', 'sgd', 'adadelta'])}}
-
+    cls_weights = [1., 1., 1., 1., 1., 1., 2*{{uniform(0, 1)}}]
+    #optimizer = {{choice(['rmsprop', 'adam', 'sgd', 'adadelta'])}} # TODO: leads to inf loss
+    optimizer = 'adadelta'
 
     main_input = Input(shape=input_shape, dtype='float32', name='main_input')
     shared = Convolution2D(nb_filters, kernel_size[0], kernel_size[1],
@@ -114,11 +78,12 @@ def model(X_train, Y_train, X_test, Y_test):
         shared = Activation('relu')(shared)
         shared = MaxPooling2D(pool_size=pool_size)(shared)
 
-    shared = Dropout({{uniform(0, 1)}})(shared)
+    dropout_coef = {{uniform(0, 1)}}
+    shared = Dropout(dropout_coef)(shared)
     shared = Flatten()(shared)
     shared = Dense(128)(shared)
     shared = Activation('relu')(shared)
-    shared = Dropout(0.5)(shared)
+    shared = Dropout(dropout_coef)(shared)
 
     length_cls = Dense((sequence_length + 1))(shared)  # to account for sequence length + 1
     length_cls = Activation('softmax', name="length_cls")(length_cls)
@@ -167,14 +132,15 @@ def model(X_train, Y_train, X_test, Y_test):
     tensorboard = TensorBoard(log_dir=directory, histogram_freq=0, write_graph=True, write_images=False)
     # Todo: P2 add EarlyStopping callback
     # Todo: P3 add LearningRateSchedule callback
-    model.fit([X_train], Y_train, batch_size=batch_size, nb_epoch=nb_epoch, verbose=1, validation_data=([X_test], Y_test), callbacks=[checkpointer, tensorboard])
+    # TODO: P2 batch size are not randomized
+    model.fit_generator(train_gen, samples_per_epoch=33401, nb_epoch=nb_epoch, verbose=1, validation_data=test_gen,
+                        nb_val_samples=13068, callbacks=[checkpointer, tensorboard])
 
 
-    score = model.evaluate(X_test, Y_test, verbose=0)
+    score = model.evaluate_generator(test_gen, val_samples=13068)
 
     print('Test accuracy:', score)
     return {'loss': score[0], 'status': STATUS_OK, 'model': model}
-
 
 if __name__ == '__main__':
     best_run, best_model = optim.minimize(model=model,
@@ -182,9 +148,11 @@ if __name__ == '__main__':
                                           algo=tpe.suggest,
                                           max_evals=10,
                                           trials=Trials())
-    X_train, Y_train, X_test, Y_test = data()
+
+    train_gen, test_gen = data()
     print("Evalutation of best performing model:")
-    print(best_model.evaluate(X_test, Y_test))
+    #print(best_model.evaluate(X_test, Y_test))
+    print(best_model.evaluate_generator(test_gen, val_samples=13068))
     print("Model parameters:")
     print(best_run)
 
