@@ -141,9 +141,6 @@ class ImageProcessor(object):
         """
         new_folder = self.data_path + folder_postfix + "/"
 
-        if not os.path.exists(new_folder):
-            os.makedirs(new_folder)
-
         processed_filename = new_folder + "dataset.p"
 
         if rewrite:
@@ -164,13 +161,19 @@ class ImageProcessor(object):
             image_resized, digits_coord = self._cropResizeImage(image_name, digits_coord)
             coord_updated, sequence_label, length = self._getUpdatedRecord(digits_coord, self.data_raw[i])
 
-            self.dataset_cropped.append([image_name, image_resized, coord_updated, length, sequence_label])
+            #self.dataset_cropped.append([image_name, image_resized, coord_updated, length, sequence_label]) # TODO: commented to play with new folder structure
+            self.dataset_cropped.append([image_name, coord_updated, length, sequence_label])
             # record = {'image_name': image_name, 'image': image_resized, 'coordinates': coord_updated, 'length': length, 'label': sequence_label}
             # self.dataset_cropped.append(record)
 
 
             if save_image:
-                misc.imsave(new_folder + image_name, image_resized)
+                # create an individual folder for each image with folder name equal to image index.
+                # this is needed to work with Keras image generator
+                img_folder = new_folder+"/"+str(i)
+                if not os.path.exists(img_folder):
+                    os.makedirs(img_folder)
+                misc.imsave(img_folder + "/" + image_name, image_resized)
 
         datafile = new_folder + "dataset.p"
         pickle.dump(self.dataset_cropped, open(datafile, "wb"))
@@ -181,7 +184,7 @@ class ImageProcessor(object):
 # proc_debug.saveProcessed(folder_postfix="_debug", debugSample=True)
 
 proc_test = ImageProcessor(data_path="data/SVHM/test", data_file="dataset.p")
-cropped_test = proc_test.saveProcessed()
+cropped_test = proc_test.saveProcessed(folder_postfix="_generator")
 
 proc_train = ImageProcessor(data_path="data/SVHM/train", data_file="dataset.p")
-cropped_train = proc_train.saveProcessed(save_image=False)
+cropped_train = proc_train.saveProcessed(folder_postfix="_generator")
