@@ -2,6 +2,7 @@ import numpy as np
 import pickle
 import os
 from scipy import misc
+from skimage.draw import line, set_color
 
 class ImageProcessor(object):
     def __init__(self, data_path="data/SVHM/train", data_file="dataset.p", extension=0.3, cropped_size=64):
@@ -134,7 +135,8 @@ class ImageProcessor(object):
 
         return image_res, crop_coord_upd
 
-    def saveProcessed(self, folder_postfix="_processed", rewrite=True, save_image=True, debugSample=False):
+    def saveProcessed(self, folder_postfix="_processed", rewrite=True, save_image=True, debugSample=False,
+                      toGrayscale=True):
         """
         This method creates pickle files for processed test and train sets of SVHM images.
         :return: reference and filenames of the pickle
@@ -171,14 +173,46 @@ class ImageProcessor(object):
                 # create an individual folder for each image with folder name equal to image index.
                 # this is needed to work with Keras image generator
                 img_folder = new_folder+"/"+str(i)
+
                 if not os.path.exists(img_folder):
                     os.makedirs(img_folder)
+
+                if toGrayscale:
+                    pass # TODO: convert image to grayscale
+
                 misc.imsave(img_folder + "/" + image_name, image_resized)
 
         datafile = new_folder + "dataset.p"
         pickle.dump(self.dataset_cropped, open(datafile, "wb"))
         return datafile
 
+def draw_BBOX(image,coord):
+    """
+    Method to add red boxes on the image.
+    :param image: individual image
+    :param coord: relative coordinates with shape (4,5)
+    :return: image with red dots in corners of digits'
+    """
+    for el in coord:
+        # calculate starting positions
+        r0 = int(el[0] * np.shape(image)[0])
+        c0 = int(el[1] * np.shape(image)[1])
+        r1 = int(el[2] * np.shape(image)[0])
+        c1 = int(el[3] * np.shape(image)[1])
+
+        rr, cc = line(r0, c0, r0, c1)
+        set_color(image, (rr, cc), (1, 0, 0))
+
+        rr, cc = line(r0, c0, r1, c0)
+        set_color(image, (rr, cc), (1, 0, 0))
+
+        rr, cc = line(r1, c1, r0, c1)
+        set_color(image, (rr, cc), (1, 0, 0))
+
+        rr, cc = line(r1, c1, r1, c0)
+        set_color(image, (rr, cc), (1, 0, 0))
+
+    return image
 
 # proc_debug = ImageProcessor(data_path="data/SVHM/test", data_file="test_data.p")
 # proc_debug.saveProcessed(folder_postfix="_debug", debugSample=True)

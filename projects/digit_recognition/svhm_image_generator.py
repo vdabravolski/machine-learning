@@ -17,6 +17,7 @@ def get_os_indices(filenames, keras_indices):
         m = re.search(r'[^/-]*', el)
         os_indices.append(int(m.group(0)))
 
+
     return os_indices
 
 
@@ -26,8 +27,22 @@ def custom_image_generator(flow_from_directory_gen, labels_pickle):
 
     for X, indices in flow_from_directory_gen:
         os_indices = get_os_indices(flow_from_directory_gen.filenames, indices)
-        labels = [label_data[i] for i in os_indices]
 
+        # labels = [label_data[i] for i in os_indices]
+
+        # Verify that the labels are in-line wiht the records in pickle file. Otherwise, throw the error
+        labels = []
+        for i in os_indices:
+            try:
+                labels.append(label_data[i])
+            except IndexError:
+                print("\n"+str(i)+": index out of range")
+#            if not str((i+1)) in label_data[i][0]:
+#                raise Exception('Label and image is not aligned. Image:'+label_data[i][0]+" and class:"+str(i))
+
+
+
+        # Init the placeholders
         length = np.zeros(shape=(len(X), 6))
         coord = np.zeros(shape=(len(X), 20))
 

@@ -22,14 +22,34 @@ def data():
     returns the keras image generators
     """
     batch_size = 128
-    test_gen = ImageDataGenerator()
+
+
+    #Image transformation
+    # TODO: P2 currently featurewise center and whitening are not calculated. First we need to do fit()
+    featurewise_center = False
+    samplewise_center = True
+    featurewise_std_normalization = False
+    samplewise_std_normalization = True
+    color_mode = 'rgb'
+    shuffle = True
+    rescale = 1./255
+
+
+    test_gen = ImageDataGenerator(featurewise_std_normalization=featurewise_std_normalization,
+                                  samplewise_std_normalization=samplewise_std_normalization,
+                                  featurewise_center=featurewise_center, samplewise_center=samplewise_center,
+                                  rescale=rescale)
     test_dir_gen = test_gen.flow_from_directory('data/SVHM/test_generator', target_size=(64, 64), batch_size=batch_size,
-                                      class_mode="sparse", shuffle=False)
+                                      class_mode="sparse", shuffle=shuffle , color_mode=color_mode)
     test_gen = custom_image_generator(test_dir_gen, labels_pickle="data/SVHM/test_generator/dataset.p")
 
-    train_gen = ImageDataGenerator()
+    train_gen = ImageDataGenerator(featurewise_std_normalization=featurewise_std_normalization,
+                                   samplewise_std_normalization=samplewise_std_normalization,
+                                   featurewise_center=featurewise_center, samplewise_center=samplewise_center,
+                                   rescale=rescale)
+
     train_dir_gen = train_gen.flow_from_directory('data/SVHM/train_generator', target_size=(64, 64), batch_size=batch_size,
-                                      class_mode="sparse", shuffle=False)
+                                      class_mode="sparse", shuffle=shuffle , color_mode=color_mode)
     train_gen = custom_image_generator(train_dir_gen, labels_pickle="data/SVHM/train_generator/dataset.p")
 
     return train_gen, test_gen
@@ -49,7 +69,7 @@ def model(train_gen, test_gen):
         - model: specify the model just created so that we can later use it again.
     '''
 
-    numpy.random.seed(8994)
+    #numpy.random.seed(8994)
     nb_classes = 11
     sequence_length = 5
     img_rows, img_cols, img_depth = 64, 64, 3
