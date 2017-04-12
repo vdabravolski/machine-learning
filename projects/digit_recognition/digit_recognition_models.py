@@ -32,7 +32,7 @@ image_type = 'grayscale'
 np.random.seed(1666)  # for reproducibility
 batch_size = 128
 nb_classes = 11  # include 10 digits and "-1" which designates empty space in digit sequence.
-nb_epoch = 24 # TODO: normal is 12.
+nb_epoch = 15 # TODO: normal is 12.
 sequence_length = 5
 
 # input image dimensions
@@ -312,6 +312,12 @@ def SVHM_model(cls_weight):
     shared = Activation('relu')(shared)
     shared = MaxPooling2D(pool_size=pool_size)(shared)
     shared = Dropout(0.25)(shared)
+
+    shared = Convolution2D(nb_filters, kernel_size[0], kernel_size[1])(shared)
+    shared = Activation('relu')(shared)
+    shared = Dropout(0.25)(shared)
+
+    shared = MaxPooling2D(pool_size=pool_size)(shared)
 
     shared = Convolution2D(nb_filters, kernel_size[0], kernel_size[1])(shared)
     shared = Activation('relu')(shared)
