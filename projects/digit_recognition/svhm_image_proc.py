@@ -3,6 +3,7 @@ import pickle
 import os
 from scipy import misc
 from skimage.draw import line, set_color
+from skimage.color import rgb2gray
 
 class ImageProcessor(object):
     def __init__(self, data_path="data/SVHM/train", data_file="dataset.p", extension=0.3, cropped_size=64):
@@ -136,7 +137,7 @@ class ImageProcessor(object):
         return image_res, crop_coord_upd
 
     def saveProcessed(self, folder_postfix="_processed", rewrite=True, save_image=True, debugSample=False,
-                      toGrayscale=True):
+                      toGrayscale=True, kerasGenerator=False):
         """
         This method creates pickle files for processed test and train sets of SVHM images.
         :return: reference and filenames of the pickle
@@ -163,13 +164,19 @@ class ImageProcessor(object):
             image_resized, digits_coord = self._cropResizeImage(image_name, digits_coord)
             coord_updated, sequence_label, length = self._getUpdatedRecord(digits_coord, self.data_raw[i])
 
-            #self.dataset_cropped.append([image_name, image_resized, coord_updated, length, sequence_label]) # TODO: commented to play with new folder structure
-            self.dataset_cropped.append([image_name, coord_updated, length, sequence_label])
-            # record = {'image_name': image_name, 'image': image_resized, 'coordinates': coord_updated, 'length': length, 'label': sequence_label}
-            # self.dataset_cropped.append(record)
+            if not kerasGenerator and save_image:
+
+                if toGrayscale:
+                    image_resized = rgb2gray(image_resized)
+
+                if not os.path.exists(new_folder):
+                    os.makedirs(new_folder)
+
+                self.dataset_cropped.append([image_name, image_resized, coord_updated, length, sequence_label]) # this loads everything RAM
+                misc.imsave(new_folder + image_name, image_resized)
 
 
-            if save_image:
+            elif kerasGenerator and save_image:
                 # create an individual folder for each image with folder name equal to image index.
                 # this is needed to work with Keras image generator
                 img_folder = new_folder+"/"+str(i)
@@ -178,9 +185,12 @@ class ImageProcessor(object):
                     os.makedirs(img_folder)
 
                 if toGrayscale:
-                    pass # TODO: convert image to grayscale
+                    image_resized = rgb2gray(image_resized)
 
+                self.dataset_cropped.append([image_name, coord_updated, length, sequence_label]) # this is used for Keras generator case
                 misc.imsave(img_folder + "/" + image_name, image_resized)
+            else:
+                raise("Not supported combination of parameters")
 
         datafile = new_folder + "dataset.p"
         pickle.dump(self.dataset_cropped, open(datafile, "wb"))
@@ -217,8 +227,8 @@ def draw_BBOX(image,coord):
 # proc_debug = ImageProcessor(data_path="data/SVHM/test", data_file="test_data.p")
 # proc_debug.saveProcessed(folder_postfix="_debug", debugSample=True)
 
-proc_test = ImageProcessor(data_path="data/SVHM/test", data_file="dataset.p")
-cropped_test = proc_test.saveProcessed(folder_postfix="_generator")
-
-proc_train = ImageProcessor(data_path="data/SVHM/train", data_file="dataset.p")
-cropped_train = proc_train.saveProcessed(folder_postfix="_generator")
+# proc_test = ImageProcessor(data_path="data/SVHM/test", data_file="dataset.p")
+# cropped_test = proc_test.saveProcessed(folder_postfix="_grayscale", toGrayscale=True)
+#
+# proc_train = ImageProcessor(data_path="data/SVHM/train", data_file="dataset.p")
+# cropped_train = proc_train.saveProcessed(folder_postfix="_grayscale", toGrayscale=True)

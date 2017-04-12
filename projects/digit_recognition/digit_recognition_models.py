@@ -17,14 +17,19 @@ from keras.utils import np_utils
 from keras import backend as K
 from mnist_data_preps import generate_sequences
 from matplotlib import pyplot as plt
+import matplotlib as mpl
 import pickle
 import tensorflow as tf
 import datetime
 import os
-tf.python.control_flow_ops = tf # to overcome some compatibility issues between keras and tf
+from svhm_image_proc import draw_BBOX
 
+tf.python.control_flow_ops = tf  # to overcome some compatibility issues between keras and tf
 
-np.random.seed(1337)  # for reproducibility
+choice = 'train'  # decide what to do: train, evaluate or predict
+image_type = 'grayscale'
+
+np.random.seed(1666)  # for reproducibility
 batch_size = 128
 nb_classes = 11  # include 10 digits and "-1" which designates empty space in digit sequence.
 nb_epoch = 12
@@ -32,23 +37,32 @@ sequence_length = 5
 
 # input image dimensions
 # img_rows, img_cols = 28, (28 * sequence_length) # this is for MNIST
-img_rows, img_cols, img_depth = 64, 64, 3 # this is for SVHM
+
+if image_type == 'grayscale':
+    img_rows, img_cols, img_depth = 64, 64, 1
+    input_shape = (img_rows, img_cols, img_depth)
+elif image_type == 'rgb':
+    img_rows, img_cols, img_depth = 64, 64, 3  # this is for SVHM. None - grayscal, 3 - RGB
+    input_shape = (img_rows, img_cols, img_depth)
+
 # number of convolutional filters to use
-nb_filters = 32
+nb_filters = 32  # used to be 32
 # size of pooling area for max pooling
 pool_size = (2, 2)
 # convolution kernel size
 kernel_size = (3, 3)
-pretrained_weights = "tmp/vanilla_cnn_weights.hdf5"
+pretrained_weights = "tmp/best_weights.hdf5"
+
 
 def prepare_MNIST_data():
     # the data, shuffled and split between train and test sets
     (train_images, train_labels), (test_images, test_labels) = mnist.load_data()
 
-    X_train_orig, Y_train, Y_train_length = generate_sequences(train_images, train_labels, out_size=np.shape(train_images)[0],
-                                                          max_length=sequence_length)
+    X_train_orig, Y_train, Y_train_length = generate_sequences(train_images, train_labels,
+                                                               out_size=np.shape(train_images)[0],
+                                                               max_length=sequence_length)
     X_test_orig, Y_test, Y_test_length = generate_sequences(test_images, test_labels, out_size=np.shape(test_images)[0],
-                                                       max_length=sequence_length)
+                                                            max_length=sequence_length)
 
     if K.image_dim_ordering() == 'th':
         X_train = X_train_orig.reshape(X_train_orig.shape[0], 1, img_rows, img_cols)
@@ -87,38 +101,36 @@ def prepare_MNIST_data():
     fifth_cls_train = Y_train[:, 4, :]
     fifth_cls_test = Y_test[:, 4, :]
 
-    train_targets = [length_cls_train, first_cls_train, second_cls_train, third_cls_train, forth_cls_train, fifth_cls_train]
+    train_targets = [length_cls_train, first_cls_train, second_cls_train, third_cls_train, forth_cls_train,
+                     fifth_cls_train]
     test_targets = [length_cls_test, first_cls_test, second_cls_test, third_cls_test, forth_cls_test, fifth_cls_test]
 
     return X_train, train_targets, X_test, test_targets, input_shape
 
-def prepare_SVHM_data():
 
-    test_data = "./data/SVHM/test_processed/dataset.p"
+def prepare_SVHM_data(input_shape=input_shape):
+    test_data = "./data/SVHM/test_grayscale/dataset.p"
     test_data = pickle.load(open(test_data, 'rb'))
 
-    train_data = "./data/SVHM/train_processed/dataset.p"
+    train_data = "./data/SVHM/train_grayscale/dataset.p"
     train_data = pickle.load(open(train_data, 'rb'))
 
-    #Images
-    # X_train = [el[1] for el in test_data]
-    # X_test = [el[1] for el in train_data]
-    X_train = np.zeros(shape=(len(train_data), img_rows, img_cols, img_depth))
-    X_test = np.zeros(shape=(len(test_data), img_rows, img_cols, img_depth))
+    # Images
+    if input_shape[2]==1:
+        X_train = np.zeros(shape=(len(train_data), img_rows, img_cols))
+        X_test = np.zeros(shape=(len(test_data), img_rows, img_cols))
+    elif input_shape[2]==3:
+        X_train = np.zeros(shape=(len(train_data), img_rows, img_cols, img_depth))
+        X_test = np.zeros(shape=(len(test_data), img_rows, img_cols, img_depth))
 
     # 1. Length
-    # lenght_train = [el[3] for el in test_data]
-    # lenght_test = [el[3] for el in train_data]
     length_train = np.zeros(shape=(len(train_data), 6))
     length_test = np.zeros(shape=(len(test_data), 6))
 
-
     # 2. Coordinates
-    # coord_train = [np.asarray(el[2]) for el in train_data]
-    # coord_test = [np.asarray(el[2]) for el in test_data]
-    coord_train = np.zeros(shape=(len(train_data), 20)) # here 20 = 5 (max number of digits) * 4 (coordinates for each digit)
+    coord_train = np.zeros(
+        shape=(len(train_data), 20))  # here 20 = 5 (max number of digits) * 4 (coordinates for each digit)
     coord_test = np.zeros(shape=(len(test_data), 20))
-
 
     # 3. Digits
     first_train = np.zeros(shape=(len(train_data), 11))
@@ -126,6 +138,53 @@ def prepare_SVHM_data():
     third_train = np.zeros(shape=(len(train_data), 11))
     forth_train = np.zeros(shape=(len(train_data), 11))
     fifth_train = np.zeros(shape=(len(train_data), 11))
+
+    first_test = np.zeros(shape=(len(test_data), 11))
+    second_test = np.zeros(shape=(len(test_data), 11))
+    third_test = np.zeros(shape=(len(test_data), 11))
+    forth_test = np.zeros(shape=(len(test_data), 11))
+    fifth_test = np.zeros(shape=(len(test_data), 11))
+
+    for idx, el in enumerate(test_data):
+        #X_test[idx, :, :, :] = el[1]
+        X_test[idx] = el[1]
+        length_test[idx, :] = el[3]
+        coord_test[idx, :] = np.asarray(el[2]).flatten()
+        first_test[idx, :] = el[4][0]
+        second_test[idx, :] = el[4][1]
+        third_test[idx, :] = el[4][2]
+        forth_test[idx, :] = el[4][3]
+        fifth_test[idx, :] = el[4][4]
+
+    for idx, el in enumerate(train_data):
+        #X_train[idx, :, :, :] = el[1]
+        X_train[idx] = el[1]
+        length_train[idx, :] = el[3]
+        coord_train[idx, :] = np.asarray(el[2]).flatten()
+        first_train[idx, :] = el[4][0]
+        second_train[idx, :] = el[4][1]
+        third_train[idx, :] = el[4][2]
+        forth_train[idx, :] = el[4][3]
+        fifth_train[idx, :] = el[4][4]
+
+    if input_shape[2]==1:
+        X_train = X_train.reshape(X_train.shape[0], img_rows, img_cols, img_depth)
+        X_test = X_test.reshape(X_test.shape[0], img_rows, img_cols, img_depth)
+
+
+    test_targets = [length_test, first_test, second_test, third_test, forth_test, fifth_test, coord_test]
+    train_targets = [length_train, first_train, second_train, third_train, forth_train, fifth_train, coord_train]
+
+    return X_train, train_targets, X_test, test_targets, input_shape
+
+
+def prepare_SVHM_test_data():
+    test_data = "./data/SVHM/test_processed/dataset.p"
+    test_data = pickle.load(open(test_data, 'rb'))
+
+    X_test = np.zeros(shape=(len(test_data), img_rows, img_cols, img_depth))
+    length_test = np.zeros(shape=(len(test_data), 6))
+    coord_test = np.zeros(shape=(len(test_data), 20))
 
     first_test = np.zeros(shape=(len(test_data), 11))
     second_test = np.zeros(shape=(len(test_data), 11))
@@ -143,21 +202,47 @@ def prepare_SVHM_data():
         forth_test[idx, :] = el[4][3]
         fifth_test[idx, :] = el[4][4]
 
-    for idx, el in enumerate(train_data):
-        X_train[idx, :, :, :] = el[1]
-        length_train[idx, :] = el[3]
-        coord_train[idx, :] = np.asarray(el[2]).flatten()
-        first_train[idx, :] = el[4][0]
-        second_train[idx, :] = el[4][1]
-        third_train[idx, :] = el[4][2]
-        forth_train[idx, :] = el[4][3]
-        fifth_train[idx, :] = el[4][4]
-
     test_targets = [length_test, first_test, second_test, third_test, forth_test, fifth_test, coord_test]
-    train_targets = [length_train, first_train, second_train, third_train, forth_train, fifth_train, coord_train]
     input_shape = (img_rows, img_cols, img_depth)
 
-    return X_train, train_targets, X_test, test_targets, input_shape
+    return X_test, test_targets, input_shape
+
+
+def sample_SVHM_test_data(nb_samples=10):
+    """
+    Get some data for predictions.
+    :return:
+    """
+
+    test_data = "./data/SVHM/test_processed/dataset.p"
+    test_data = pickle.load(open(test_data, 'rb'))
+
+    random_index = np.random.choice(len(test_data), nb_samples)
+
+    X_sample = np.zeros(shape=(nb_samples, img_rows, img_cols, img_depth))
+    length_sample = np.zeros(shape=(nb_samples, 6))
+    coord_sample = np.zeros(shape=(nb_samples, 20))
+
+    first_sample = np.zeros(shape=(nb_samples, 11))
+    second_sample = np.zeros(shape=(nb_samples, 11))
+    third_sample = np.zeros(shape=(nb_samples, 11))
+    forth_sample = np.zeros(shape=(nb_samples, 11))
+    fifth_sample = np.zeros(shape=(nb_samples, 11))
+
+    for i, idx in enumerate(random_index):
+        X_sample[i, :, :, :] = test_data[idx][1]
+        length_sample[i, :] = test_data[idx][3]
+        coord_sample[i, :] = np.asarray(test_data[idx][2]).flatten()
+        first_sample[i, :] = test_data[idx][4][0]
+        second_sample[i, :] = test_data[idx][4][1]
+        third_sample[i, :] = test_data[idx][4][2]
+        forth_sample[i, :] = test_data[idx][4][3]
+        fifth_sample[i, :] = test_data[idx][4][4]
+
+    test_targets = [length_sample, first_sample, second_sample, third_sample, forth_sample, fifth_sample, coord_sample]
+
+    return X_sample, test_targets
+
 
 def synth_MNIST_model(cls_weights):
     # Shared feature layers which will be used for multiple classifiers.
@@ -168,6 +253,13 @@ def synth_MNIST_model(cls_weights):
     shared = Convolution2D(nb_filters, kernel_size[0], kernel_size[1])(shared)
     shared = Activation('relu')(shared)
     shared = MaxPooling2D(pool_size=pool_size)(shared)
+
+    # # TODO: note that this is an extra layer, Not all weights will work with it.
+    # shared = Convolution2D(nb_filters, kernel_size[0], kernel_size[1],
+    #                        border_mode='valid', input_shape=input_shape)(main_input)
+    # shared = Activation('relu')(shared)
+    # shared = MaxPooling2D(pool_size=pool_size)(shared)
+
     shared = Dropout(0.25)(shared)
     shared = Flatten()(shared)
     shared = Dense(128)(shared)
@@ -202,11 +294,13 @@ def synth_MNIST_model(cls_weights):
     # model compilation and training
     model = Model(input=[main_input], output=[length_cls, first_cls, second_cls, third_cls, forth_cls, fifth_cls])
 
-    model.compile(loss={'categorical_crossentropy':[length_cls, first_cls, second_cls, third_cls, forth_cls, fifth_cls]},
-                  optimizer='adadelta',
-                  metrics=['accuracy'], loss_weights=cls_weights)
+    model.compile(
+        loss={'categorical_crossentropy': [length_cls, first_cls, second_cls, third_cls, forth_cls, fifth_cls]},
+        optimizer='adadelta',
+        metrics=['accuracy'], loss_weights=cls_weights)
 
     return model
+
 
 def SVHM_model(cls_weight):
     # Shared feature layers which will be used for multiple classifiers.
@@ -221,8 +315,7 @@ def SVHM_model(cls_weight):
     shared = Flatten()(shared)
     shared = Dense(128)(shared)
     shared = Activation('relu')(shared)
-    shared = Dropout(0.5)(shared)
-
+    shared = Dropout(0.25)(shared)
 
     # 6 different classifiers.
     # 1. Length classifier
@@ -249,11 +342,12 @@ def SVHM_model(cls_weight):
     fifth_cls = Dense(nb_classes)(shared)
     fifth_cls = Activation('softmax', name="fifth_cls")(fifth_cls)
 
-    #7. Digit boxes coordinates regresssion
+    # 7. Digit boxes coordinates regresssion
     coord_regr = Dense(20, name="coord_regr")(shared)
 
     # model compilation and training
-    model = Model(input=[main_input], output=[length_cls, first_cls, second_cls, third_cls, forth_cls, fifth_cls, coord_regr])
+    model = Model(input=[main_input],
+                  output=[length_cls, first_cls, second_cls, third_cls, forth_cls, fifth_cls, coord_regr])
 
     model.compile(loss={'length_cls': 'categorical_crossentropy', 'first_cls': 'categorical_crossentropy',
                         'second_cls': 'categorical_crossentropy', 'third_cls': 'categorical_crossentropy',
@@ -266,6 +360,7 @@ def SVHM_model(cls_weight):
                            'coord_regr': _iou_metric}, loss_weights=cls_weights)
 
     return model
+
 
 def _iou_metric(y_true, y_pred, epsilon=1e-5, sequence_length=5):
     """ Inspired by: http://ronny.rest/tutorials/module/localization_001/intersect_of_union/
@@ -308,8 +403,8 @@ def _iou_metric(y_true, y_pred, epsilon=1e-5, sequence_length=5):
     width = K.clip(width, 0, None)
     height = K.clip(height, 0, None)
 
-    #area_overlap = width * height
-    #area_overlap = K.prod(width * height)
+    # area_overlap = width * height
+    # area_overlap = K.prod(width * height)
     area_overlap = K.tf.multiply(width, height)
 
     # COMBINED AREAS
@@ -319,71 +414,93 @@ def _iou_metric(y_true, y_pred, epsilon=1e-5, sequence_length=5):
 
     # RATIO OF AREA OF OVERLAP OVER COMBINED AREA
     iou = area_overlap / (area_combined + epsilon)
-    iou = K.mean(iou) # reduce mean across all axis
+    iou = K.mean(iou)  # reduce mean across all axis
 
     return iou
 
-def train_model(model, train_inputs, train_targets, test_inputs, test_targets, use_trained=False):
+
+def train_model(model, train_inputs=None, train_targets=None, test_inputs=None, test_targets=None, use_trained=False):
     if use_trained:
         model = model
         model.load_weights(pretrained_weights)
     else:
-        #create appropriate directory to store  weights and logs.
+        # create appropriate directory to store  weights and logs.
         directory = "output/" + str(datetime.datetime.now())
         if not os.path.exists(directory):
             os.makedirs(directory)
 
-        checkpointer = ModelCheckpoint(filepath=directory+"/weights.hdf5", verbose=1, save_best_only=True)
+        checkpointer = ModelCheckpoint(filepath=directory + "/weights.hdf5", verbose=1, save_best_only=True)
         tensorboard = TensorBoard(log_dir=directory, histogram_freq=0, write_graph=True, write_images=False)
         model.fit([train_inputs], train_targets, batch_size=batch_size, nb_epoch=nb_epoch,
                   verbose=1, validation_data=([test_inputs], test_targets), callbacks=[checkpointer, tensorboard])
 
     return model
 
+
 def evaluate_model(model, eval_inputs, eval_targets, verbose=1):
     score = model.evaluate(eval_inputs, eval_targets, verbose=verbose)
     for idx in xrange(len(score)):
-        print(model.metrics_names[idx]+": "+str(score[idx]))
+        print(model.metrics_names[idx] + ": " + str(score[idx]))
 
-def predict_sequence(model, pred_input):
+
+def predict_sequence(model, pred_input, return_coord=True):
     predictions = model.predict(pred_input)
 
     pred_legth = np.argmax(predictions[0][0])
     pred_sequence = ""
 
-    for i in xrange(1, (pred_legth+1)):
+    for i in xrange(1, (pred_legth + 1)):
         pred_sequence += str(np.argmax(predictions[i][0]))
+
+    if return_coord:
+        pred_coord = (predictions[6])
+        return pred_sequence, pred_coord
 
     return pred_sequence
 
 
-
 # Training SVHM model
-X_train, train_targets, X_test, test_targets, input_shape = prepare_SVHM_data()
-cls_weights = [1., 1., 1., 1., 1., 1., 1.]
-new_model = SVHM_model(cls_weights)
-trained_model = train_model(model=new_model, train_inputs=X_train,
-                            train_targets=train_targets, test_inputs=X_test,
-                            test_targets=test_targets, use_trained=False)
-evaluate_model(trained_model, X_test, test_targets)
 
+if choice == 'evaluate':
+    X_test, test_targets, input_shape = prepare_SVHM_test_data()
+    cls_weights = [1., 1., 1., 1., 1., 1., 1.]
+    new_model = SVHM_model(cls_weights)
+    new_model.load_weights(pretrained_weights)
+    evaluate_model(new_model, X_test, test_targets)
 
-# Training MNIST model
-# new_model = synth_MNIST_model(cls_weights)
-# trained_model = train_model(model=new_model, train_inputs=X_train,
-#                             train_targets=train_targets, test_inputs=X_test,test_targets=test_targets, use_trained=True)
-#
-# evaluate_model(trained_model,X_test,test_targets)
-#
-# ### Sampling predictions
-# fig = plt.figure()
-#
-# for i in range(1,10):
-#     random_index = np.random.choice(10000)
-#     prediction = predict_sequence(trained_model, pred_input=X_test[np.newaxis, random_index])
-#
-#     # Create subplot
-#     a = fig.add_subplot(3, 3, i)
-#     imgplot = plt.imshow(X_test_orig[random_index]) #TODO handle this case
-#     a.set_title('Predicted:'+prediction)
-# plt.show()
+elif choice == 'train':
+    X_train, train_targets, X_test, test_targets, input_shape = prepare_SVHM_data()
+    cls_weights = [1., 1., 1., 1., 1., 1., 1.]
+    new_model = SVHM_model(cls_weights)
+    trained_model = train_model(model=new_model, train_inputs=X_train,
+                                train_targets=train_targets, test_inputs=X_test,
+                                test_targets=test_targets, use_trained=False)
+    evaluate_model(trained_model, X_test, test_targets)
+elif choice == 'predict':
+    nb_samples = 25
+    X_sample, sample_targets = sample_SVHM_test_data(nb_samples=nb_samples)
+    cls_weights = [1., 1., 1., 1., 1., 1., 1.]
+    new_model = SVHM_model(cls_weights)
+    trained_model = train_model(model=new_model, use_trained=True)
+
+    ### Sampling predictions
+    fig = plt.figure()
+
+    mpl.rcParams['axes.titlesize'] = 'small'
+    plt.axis('off')
+
+    for idx, el in enumerate(X_sample):
+        prediction, pred_coord = predict_sequence(trained_model, pred_input=el[np.newaxis])
+
+        # Create subplot
+        a = fig.add_subplot(5, 5, (idx + 1))
+
+        imgplot = plt.imshow(draw_BBOX(el, pred_coord.reshape((5, 4))))
+
+        true_sequence = ''
+        for i in xrange(np.argmax(sample_targets[0][idx])):
+            label = str(np.argmax(sample_targets[i + 1][idx]))
+            true_sequence += label
+        a.set_title('Predicted:' + prediction + "  label:" + true_sequence)
+
+    plt.show()
