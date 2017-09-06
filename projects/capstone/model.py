@@ -23,7 +23,7 @@ import uuid
 TIMESERIES_FOLDER = "data/timeseries/"
 
 
-def get_ts_ticker_data(ticker, output_shape, train_test_ratio=0.7, sliding_window=True, classification=True):
+def get_ts_ticker_data(ticker, output_shape, train_test_val_ratio=[0.7, 0.2, 0.1], sliding_window=True, classification=True):
     """method to do necessary data massage
     sliding window - if True, then input_dim[0] sliding windows is created;
     output_shape:
@@ -85,33 +85,39 @@ def get_ts_ticker_data(ticker, output_shape, train_test_ratio=0.7, sliding_windo
     data_df = data_df.reset_index(drop=True)
     X = data_df.loc[:,['open', 'high', 'low', 'close', 'volume']]  # TODO: reduced number of features are used.
 
-    X_train_index = int(X.shape[0] * train_test_ratio)
-    Y_train_index = int(Y.shape[0] * train_test_ratio)
-
-    Y_train = Y.values[:Y_train_index]
-    Y_test = Y.values[(Y_train_index + 1):]
-
-    X_train = X.values[:X_train_index, :]
-    X_test = X.values[(X_train_index + 1):, :]
+    # Define indices for training, testing and validation data sets.
+    X_train_test_index = int(X.shape[0] * train_test_val_ratio[0])
+    Y_train_test_index = int(Y.shape[0] * train_test_val_ratio[0])
+    X_test_val_index = int(X.shape[0] * train_test_val_ratio[1])
+    Y_test_val_index = int(Y.shape[0] * train_test_val_ratio[1])
 
 
+    Y_train = Y.values[:Y_train_test_index]
+    Y_test = Y.values[(Y_train_test_index + 1):(Y_train_test_index + Y_test_val_index)]
+    Y_val = Y.values[(Y_train_test_index + Y_test_val_index+1):]
 
+    X_train = X.values[:X_train_test_index, :]
+    X_test = X.values[(X_train_test_index + 1):(X_train_test_index + X_test_val_index)]
+    X_val = X.values[(X_train_test_index + X_test_val_index + 1):]
+
+
+    # Resize to batches.
     # TODO: when resizing, we are trimming a lot of data to fit into the batch*timestep size.
     X_train = _resize_data_for_batches(X_train, batch_size * timesteps)
     X_test = _resize_data_for_batches(X_test, batch_size * timesteps)
+    X_val = _resize_data_for_batches(X_val, batch_size * timesteps)
     X_train = np.reshape(X_train, (-1, timesteps, features))
     X_test = np.reshape(X_test, (-1, timesteps, features))
+    X_val = np.reshape(X_val, (-1, timesteps, features))
 
+    # trimming labels based to fix X samples
     Y_train = Y_train[:X_train.shape[0]]
     Y_test = Y_test[:X_test.shape[0]]
+    Y_val = Y_val[:X_val.shape[0]]
 
-
-    # resize to batches
-
-
-    print("Input data shape: \n X train: {0}, Y train: {1} \n X test: {2}, Y test: {3}".
-          format(X_train.shape, Y_train.shape, X_test.shape, Y_test.shape))
-    return X_train, Y_train, X_test, Y_test
+    print("Input data shape: \n X train: {0}, Y train: {1} \n X test: {2}, Y test: {3} \n X val: {4}, Y val: {5}".
+          format(X_train.shape, Y_train.shape, X_test.shape, Y_test.shape, X_val.shape, Y_val.shape))
+    return X_train, Y_train, X_test, Y_test, X_val, Y_val
 
 
 def get_complex_model():
@@ -191,7 +197,7 @@ def training_model(ticker, result_folder):
     ts_config = model_config['ts_config']
 
     # Retrieve data and then resize it to fit predefined batch size
-    TS_X_train, TS_Y_train, TS_X_test, TS_Y_test = \
+    TS_X_train, TS_Y_train, TS_X_test, TS_Y_test, _, _ = \
         get_ts_ticker_data(ticker, output_shape=
         (ts_config['batch_size'],ts_config['timesteps'],ts_config['features']),
                            classification=False)
@@ -280,10 +286,10 @@ if __name__ == '__main__':
 
     model, config = training_model(ticker, result_folder)
 
-    TS_X_train, TS_Y_train, TS_X_test, TS_Y_test = \
-        get_ts_ticker_data(ticker, output_shape=(batch_size, timesteps, 5), classification=False)
+    _, _, _, _, TS_X_val, TS_Y_val  = \
+        get_ts_ticker_data(ticker, train_test_val_ratio=[0.5, 0.25, 0.25], output_shape=(batch_size, timesteps, 5), classification=False)
 
-    evaluate_model(model, X=TS_X_test, Y=TS_Y_test,
+    evaluate_model(model, X=TS_X_val, Y=TS_Y_val,
                    classification=False, prediction_horizon=prediction_horizon, result_folder=result_folder)
 
     config['runtime'] = {'ticker' : ticker, 'prediction_horizon' : prediction_horizon} # adding some runtime parameters to config dump
