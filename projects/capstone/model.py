@@ -23,7 +23,8 @@ import uuid
 TIMESERIES_FOLDER = "data/timeseries/"
 
 
-def get_ts_ticker_data(ticker, output_shape, train_test_val_ratio=[0.7, 0.2, 0.1], sliding_window=True, classification=True):
+def get_ts_ticker_data(ticker, output_shape, train_test_val_ratio=[0.7, 0.2, 0.1], sliding_window=True,
+                       classification=True):
     """method to do necessary data massage
     sliding window - if True, then input_dim[0] sliding windows is created;
     output_shape:
@@ -37,11 +38,7 @@ def get_ts_ticker_data(ticker, output_shape, train_test_val_ratio=[0.7, 0.2, 0.1
     with open(file, "rb") as file:
         ticker_df = pickle.load(file)
 
-    data_df = pd.DataFrame(columns=ticker_df.columns)
-    target_df = pd.DataFrame(columns=['diff_bool', 'value'])
-
     if sliding_window:  # implementation of sliding window. Each window is moving by 1 element.
-
         if len(output_shape) != 3:
             raise ValueError("If you choose sliding window parameter"
                              "please specify 3 output dimensions for data."
@@ -52,15 +49,24 @@ def get_ts_ticker_data(ticker, output_shape, train_test_val_ratio=[0.7, 0.2, 0.1
         timesteps = output_shape[1]
         features = output_shape[2]
 
-        for idx in range(ticker_df.shape[0] - timesteps-1):
+        # Get X properly shaped
+        X = convert_data_to_batch_timesteps(ticker_df.loc[:, ['open', 'high', 'low', 'close', 'volume', 'date']],
+                                            batch_size=batch_size, timesteps=timesteps, features=features)
+        nb_samples = np.shape(X)[0]
 
-            data_sample = ticker_df[idx: idx + timesteps]
-            diff = int(ticker_df.close[idx + timesteps + 1] > ticker_df.close[idx + timesteps])
-            target_sample = pd.DataFrame([[diff, ticker_df.close[idx + timesteps+1]]],
-                                         columns=['diff_bool', 'value'])
+        # Get Y properly shaped
+        diff_bool = ticker_df.close[(timesteps+1):].reset_index(drop=True) > ticker_df.close[timesteps:-1].reset_index(drop=True)
+        diff_bool = diff_bool.astype(int) #converting boolean value to integer
+        value = ticker_df.close[(timesteps+1):].reset_index(drop=True)
+        date = ticker_df.date[(timesteps+1):].reset_index(drop=True)
+        target_df = pd.concat([diff_bool.rename('close_bool'), value, date], axis=1).reset_index(drop=True)
 
-            data_df = data_df.append(data_sample)
-            target_df = target_df.append(target_sample, ignore_index=True)
+        target_df = target_df.loc[:(nb_samples-1), :] # shape Y to trimmed version of X
+
+        if classification:
+            Y = target_df.close_bool.as_matrix()
+        else:
+            Y = target_df.close.as_matrix()
 
     else:
 
@@ -70,54 +76,56 @@ def get_ts_ticker_data(ticker, output_shape, train_test_val_ratio=[0.7, 0.2, 0.1
             raise ValueError("Please specify output with shape (batch_size, feature_size)"
                              "Now you passed {0}".format(len(output_shape)))
 
-
         # Explicitly define output dimensions
         batch_size = output_shape[0]
         features = output_shape[1]
 
 
-    if classification:
-        Y = target_df.diff_bool
-    else:
-        Y = target_df.value
+    # Define indices for training, testing and validation data sets which conform to LSTM data shape requirements.
+    train_index = int((nb_samples*train_test_val_ratio[0])/batch_size)*batch_size
+    test_index = int((nb_samples*train_test_val_ratio[1])/batch_size)*batch_size
 
+    Y_train = Y[:train_index]
+    Y_test = Y[train_index:(train_index + test_index)]
+    Y_val = Y[(train_index + test_index ):]
 
-    data_df = data_df.reset_index(drop=True)
-    X = data_df.loc[:,['open', 'high', 'low', 'close', 'volume']]  # TODO: reduced number of features are used.
-
-    # Define indices for training, testing and validation data sets.
-    X_train_test_index = int(X.shape[0] * train_test_val_ratio[0])
-    Y_train_test_index = int(Y.shape[0] * train_test_val_ratio[0])
-    X_test_val_index = int(X.shape[0] * train_test_val_ratio[1])
-    Y_test_val_index = int(Y.shape[0] * train_test_val_ratio[1])
-
-
-    Y_train = Y.values[:Y_train_test_index]
-    Y_test = Y.values[(Y_train_test_index + 1):(Y_train_test_index + Y_test_val_index)]
-    Y_val = Y.values[(Y_train_test_index + Y_test_val_index+1):]
-
-    X_train = X.values[:X_train_test_index, :]
-    X_test = X.values[(X_train_test_index + 1):(X_train_test_index + X_test_val_index)]
-    X_val = X.values[(X_train_test_index + X_test_val_index + 1):]
-
-
-    # Resize to batches.
-    # TODO: when resizing, we are trimming a lot of data to fit into the batch*timestep size.
-    X_train = _resize_data_for_batches(X_train, batch_size * timesteps)
-    X_test = _resize_data_for_batches(X_test, batch_size * timesteps)
-    X_val = _resize_data_for_batches(X_val, batch_size * timesteps)
-    X_train = np.reshape(X_train, (-1, timesteps, features))
-    X_test = np.reshape(X_test, (-1, timesteps, features))
-    X_val = np.reshape(X_val, (-1, timesteps, features))
-
-    # trimming labels based to fix X samples
-    Y_train = Y_train[:X_train.shape[0]]
-    Y_test = Y_test[:X_test.shape[0]]
-    Y_val = Y_val[:X_val.shape[0]]
+    X_train = X[:train_index, :, :]
+    X_test = X[train_index:(train_index + test_index), :, :]
+    X_val = X[(train_index + test_index):, :, :]
 
     print("Input data shape: \n X train: {0}, Y train: {1} \n X test: {2}, Y test: {3} \n X val: {4}, Y val: {5}".
           format(X_train.shape, Y_train.shape, X_test.shape, Y_test.shape, X_val.shape, Y_val.shape))
+
     return X_train, Y_train, X_test, Y_test, X_val, Y_val
+
+
+def convert_data_to_batch_timesteps(data, batch_size, timesteps, features, time_range=None):
+    """
+    This method takes as an input sequence of 2D timeseries data of shape (nb_samples, features)
+    and converst it to 3D data pof shape (nb_samples, timesteps, features), where timesteps define a slice of timeseries data.
+    """
+
+
+    if time_range is not None: # check if a specific time range needed. Otherwise, process all data.
+        data_time_slice = data.loc[(data['date'] > time_range[0]) & (data['date'] < time_range[1])]
+    else:
+        data_time_slice = data
+
+
+    # Dropping "date" column as we no longer need it.
+    data_time_slice = data_time_slice.drop(labels='date', axis=1)
+
+    augmented_df = pd.DataFrame() # initate new
+    for idx in range(data_time_slice.shape[0] - timesteps - 1):
+        data_sample = data_time_slice[idx: idx + timesteps]
+        augmented_df = augmented_df.append(data_sample)
+    augmented_df = augmented_df.reset_index(drop=True)
+
+    sample_size = augmented_df.shape[0]
+    trimmed_idx = math.floor(sample_size / (batch_size*timesteps)) * (batch_size*timesteps)
+    resized_data = np.reshape(augmented_df[:trimmed_idx].values, (-1, timesteps, features))
+
+    return resized_data
 
 
 def get_complex_model():
@@ -126,7 +134,7 @@ def get_complex_model():
     # A dictionary with specific config. Will be used to track experiments settings.
     model_config = {'name': 'complex_model'}
     model_config['optimizer'] = 'adam'
-    #model_config['loss'] = 'binary_crossentropy'
+    # model_config['loss'] = 'binary_crossentropy'
     model_config['loss'] = 'mean_squared_error'
 
     # TODO: in future add here nlp and fundamentals branches
@@ -135,6 +143,7 @@ def get_complex_model():
     model.compile(loss=model_config['loss'], optimizer=model_config['optimizer'])
 
     return model, model_config
+
 
 def ts_model_branch():
     c = {'name': 'ts_branch'}
@@ -155,7 +164,8 @@ def ts_model_branch():
 
     branch = Sequential()
     branch.add(LSTM(c['lstm_shapes'][0], batch_input_shape=(c['batch_size'], c['timesteps'], c['features']),
-                    return_sequences=c['return_sequence'], stateful=c['stateful'], name="lstm_1", go_backwards=c['go_backwards']))
+                    return_sequences=c['return_sequence'], stateful=c['stateful'], name="lstm_1",
+                    go_backwards=c['go_backwards']))
     branch.add(LSTM(c['lstm_shapes'][0],
                     return_sequences=c['return_sequence'], name="lstm_2", stateful=c['stateful']))
     branch.add(LSTM(c['lstm_shapes'][0],
@@ -186,20 +196,20 @@ def _resize_data_for_batches(data, batch_size):
     return data[:new_sample_size]
 
 
-
 def training_model(ticker, result_folder):
     """method to train the model"""
 
     # Initialize complex model.
     model, model_config = get_complex_model()
-    model_config['epochs'] = 1
+    model_config['epochs'] = 10
     model_config['mode'] = 'regression'
+    model_config['train_test_val_ratio'] = train_test_val_ratio
     ts_config = model_config['ts_config']
 
     # Retrieve data and then resize it to fit predefined batch size
     TS_X_train, TS_Y_train, TS_X_test, TS_Y_test, _, _ = \
-        get_ts_ticker_data(ticker, output_shape=
-        (ts_config['batch_size'],ts_config['timesteps'],ts_config['features']),
+        get_ts_ticker_data(ticker, train_test_val_ratio=train_test_val_ratio, output_shape=
+        (ts_config['batch_size'], ts_config['timesteps'], ts_config['features']),
                            classification=False)
 
     model.summary()
@@ -212,27 +222,26 @@ def training_model(ticker, result_folder):
     loss = []
     val_loss = []
 
-
     for _ in range(model_config['epochs']):
         history = model.fit(TS_X_train, TS_Y_train, epochs=1, batch_size=model_config['ts_config']['batch_size'],
-                        validation_data=(TS_X_test, TS_Y_test), verbose=2, shuffle=False)
+                            validation_data=(TS_X_test, TS_Y_test), verbose=2, shuffle=False)
         loss.append(history.history['loss'])
         val_loss.append(history.history['val_loss'])
         model.reset_states()
 
-#
+    #
     # # plot history
     pyplot.plot(loss, label='train')
     pyplot.plot(val_loss, label='test')
     pyplot.legend()
     pyplot.interactive(False)
-    pyplot.savefig(result_folder+"loss_chart.png")
+    pyplot.savefig(result_folder + "loss_chart.png")
     pyplot.close()
 
     return model, model_config
 
-def evaluate_model(model, X, Y, prediction_horizon, result_folder, classification=True):
 
+def evaluate_model(model, X, Y, result_folder, classification=True, labels=['true', 'predicted']):
     if classification:
         raise NotImplemented("Need to implement validation function for classification mode")
 
@@ -240,17 +249,15 @@ def evaluate_model(model, X, Y, prediction_horizon, result_folder, classificatio
 
     Y_pred = model.predict(X, batch_size=batch_size)
 
-    pyplot.plot(time_series, Y, label='real')
-    pyplot.plot(time_series, Y_pred, label='predicted')
+    pyplot.plot(time_series, Y, label=labels[0])
+    pyplot.plot(time_series, Y_pred, label=labels[1])
     pyplot.legend()
     pyplot.interactive(False)
-    pyplot.savefig(result_folder+"true_vs_predicted.png")
+    pyplot.savefig(result_folder + "{0}_vs_{1}.png".format(labels[0], labels[1]))
     pyplot.close()
 
 
-
 def get_sample_data(ticker, sample_size):
-
     file = TIMESERIES_FOLDER + "{0}_df.p".format(ticker)
     with open(file, "rb") as file:
         ticker_df = pickle.load(file)
@@ -258,43 +265,47 @@ def get_sample_data(ticker, sample_size):
     random_idx = random.randint(0, (ticker_df.shape[0] - sample_size - 1))
 
     X_sample = ticker_df.loc[random_idx:(random_idx + sample_size - 1), ['open', 'high', 'low', 'close', 'volume']]
-    Y_sample = ticker_df.loc[(random_idx + 1):(random_idx+sample_size), ['close']]
+    Y_sample = ticker_df.loc[(random_idx + 1):(random_idx + sample_size), ['close']]
 
     return X_sample, Y_sample
 
-def _prepare_results_folder():
-    result_folder = './results/{0}/'.format(str(uuid.uuid1()))
+
+def _prepare_results_folder(ticker):
+    result_folder = './results/{0}_{1}/'.format(ticker, str(uuid.uuid1()))
     if not os.path.exists(result_folder):
         os.makedirs(result_folder)
     return result_folder
 
+
 def _dump_config(result_folder, config):
-    with open(result_folder+'model_config.json', 'w') as outfile:
+    with open(result_folder + 'model_config.json', 'w') as outfile:
         json.dump(config, outfile)
 
 
-batch_size = 64 # TODO: really bad practice. Global variable.
+# TODO: Watch out. Global variables.
+batch_size = 64
 timesteps = 20
+train_test_val_ratio = [0.6, 0.3, 0.1]
+
 
 if __name__ == '__main__':
-    result_folder = _prepare_results_folder()
-
     # Runtime configs
-    ticker = 'FB'
-    prediction_horizon = 20 # todo: as of now, this seems to be irrelevant feature.
-
+    ticker = 'GOOG'
+    result_folder = _prepare_results_folder(ticker)
 
     model, config = training_model(ticker, result_folder)
 
-    _, _, _, _, TS_X_val, TS_Y_val  = \
-        get_ts_ticker_data(ticker, train_test_val_ratio=[0.5, 0.25, 0.25], output_shape=(batch_size, timesteps, 5), classification=False)
+    TS_X_train, TS_Y_train, TS_X_test, TS_Y_test, TS_X_val, TS_Y_val = \
+        get_ts_ticker_data(ticker, train_test_val_ratio=[0.6, 0.3, 0.1], output_shape=(batch_size, timesteps, 5),
+                           classification=False)
 
-    evaluate_model(model, X=TS_X_val, Y=TS_Y_val,
-                   classification=False, prediction_horizon=prediction_horizon, result_folder=result_folder)
+    evaluate_model(model, X=TS_X_val, Y=TS_Y_val, result_folder=result_folder, labels=['val_true', 'val_predicted'],
+                   classification=False)
+    evaluate_model(model, X=TS_X_test, Y=TS_Y_test, result_folder=result_folder, labels=['test_true', 'test_predicted'],
+                   classification=False)
 
-    config['runtime'] = {'ticker' : ticker, 'prediction_horizon' : prediction_horizon} # adding some runtime parameters to config dump
-    config['model'] = model.to_json() # adding model description to config dump
+    config['runtime'] = {'ticker': ticker}  # adding some runtime parameters to config dump
+    config['model'] = model.to_json()  # adding model description to config dump
     _dump_config(result_folder, config)
 
     print(result_folder)
-
