@@ -63,3 +63,29 @@ target/
 
 #Ipython Notebook
 .ipynb_checkpoints
+
+# various stuff
+*.png
+.idea
+.floydignore
+.floydexpt
+.floyddata
+*.index
+*.meta
+*.file
+*.hdf5
+*cifar-10*
+*output*
+*.txt
+*projects/capstone/results/*
+*glove.6B*
+*fasttext*
+*capstone/data*
+*capstone/libs*
+*.gitignore
+*.docx
+*report-example*
+*project_description*
+*_template*
+*capstone/data/*
+

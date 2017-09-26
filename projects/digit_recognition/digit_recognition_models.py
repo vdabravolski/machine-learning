@@ -26,7 +26,7 @@ from svhm_image_proc import draw_BBOX
 
 tf.python.control_flow_ops = tf  # to overcome some compatibility issues between keras and tf
 
-choice = 'train'  # decide what to do: train, evaluate or predict
+choice = 'predict'  # decide what to do: train, evaluate or predict
 image_type = 'grayscale'
 
 np.random.seed(1666)  # for reproducibility
@@ -179,10 +179,13 @@ def prepare_SVHM_data(input_shape=input_shape):
 
 
 def prepare_SVHM_test_data():
-    test_data = "./data/SVHM/test_processed/dataset.p"
+    test_data = "./data/SVHM/test_grayscale/dataset.p"
     test_data = pickle.load(open(test_data, 'rb'))
 
-    X_test = np.zeros(shape=(len(test_data), img_rows, img_cols, img_depth))
+    if img_depth==1:
+        X_test = np.zeros(shape=(len(test_data), img_rows, img_cols))
+    else:
+        X_test = np.zeros(shape=(len(test_data), img_rows, img_cols, img_depth))
     length_test = np.zeros(shape=(len(test_data), 6))
     coord_test = np.zeros(shape=(len(test_data), 20))
 
@@ -193,7 +196,7 @@ def prepare_SVHM_test_data():
     fifth_test = np.zeros(shape=(len(test_data), 11))
 
     for idx, el in enumerate(test_data):
-        X_test[idx, :, :, :] = el[1]
+        X_test[idx] = el[1]
         length_test[idx, :] = el[3]
         coord_test[idx, :] = np.asarray(el[2]).flatten()
         first_test[idx, :] = el[4][0]
@@ -205,6 +208,9 @@ def prepare_SVHM_test_data():
     test_targets = [length_test, first_test, second_test, third_test, forth_test, fifth_test, coord_test]
     input_shape = (img_rows, img_cols, img_depth)
 
+    if img_depth==1:
+        X_test = X_test.reshape(X_test.shape[0], img_rows, img_cols, img_depth)
+
     return X_test, test_targets, input_shape
 
 
@@ -214,12 +220,16 @@ def sample_SVHM_test_data(nb_samples=10):
     :return:
     """
 
-    test_data = "./data/SVHM/test_processed/dataset.p"
+    test_data = "./data/SVHM/test_grayscale/dataset.p"
     test_data = pickle.load(open(test_data, 'rb'))
 
     random_index = np.random.choice(len(test_data), nb_samples)
 
-    X_sample = np.zeros(shape=(nb_samples, img_rows, img_cols, img_depth))
+    if img_depth==1:
+        X_sample = np.zeros(shape=(nb_samples, img_rows, img_cols))
+    else:
+        X_sample = np.zeros(shape=(nb_samples, img_rows, img_cols, img_depth))
+
     length_sample = np.zeros(shape=(nb_samples, 6))
     coord_sample = np.zeros(shape=(nb_samples, 20))
 
@@ -230,7 +240,7 @@ def sample_SVHM_test_data(nb_samples=10):
     fifth_sample = np.zeros(shape=(nb_samples, 11))
 
     for i, idx in enumerate(random_index):
-        X_sample[i, :, :, :] = test_data[idx][1]
+        X_sample[i] = test_data[idx][1]
         length_sample[i, :] = test_data[idx][3]
         coord_sample[i, :] = np.asarray(test_data[idx][2]).flatten()
         first_sample[i, :] = test_data[idx][4][0]
@@ -240,6 +250,10 @@ def sample_SVHM_test_data(nb_samples=10):
         fifth_sample[i, :] = test_data[idx][4][4]
 
     test_targets = [length_sample, first_sample, second_sample, third_sample, forth_sample, fifth_sample, coord_sample]
+
+    if img_depth==1:
+        X_sample = X_sample.reshape(X_sample.shape[0], img_rows, img_cols, img_depth)
+
 
     return X_sample, test_targets
 
@@ -497,10 +511,10 @@ elif choice == 'train':
 elif choice == 'predict':
     nb_samples = 25
     X_sample, sample_targets = sample_SVHM_test_data(nb_samples=nb_samples)
-    cls_weights = [1., 1., 1., 1., 1., 1., 1.]
-    new_model = SVHM_model(cls_weights)
-    trained_model = train_model(model=new_model, use_trained=True)
-
+    # cls_weights = [1., 1., 1., 1., 1., 1., 1.]
+    # new_model = SVHM_model(cls_weights)
+    # trained_model = train_model(model=new_model, use_trained=True)
+    #
     ### Sampling predictions
     fig = plt.figure()
 
@@ -508,12 +522,15 @@ elif choice == 'predict':
     plt.axis('off')
 
     for idx, el in enumerate(X_sample):
-        prediction, pred_coord = predict_sequence(trained_model, pred_input=el[np.newaxis])
+#        prediction, pred_coord = predict_sequence(trained_model, pred_input=el[np.newaxis])
 
         # Create subplot
         a = fig.add_subplot(5, 5, (idx + 1))
 
-        imgplot = plt.imshow(draw_BBOX(el, pred_coord.reshape((5, 4))))
+        if len(np.shape(el))==2:
+            imgplot = plt.imshow(draw_BBOX(el[:,:,0], pred_coord.reshape((5, 4))))
+        elif len(np.shape(el))==3:
+            imgplot = plt.imshow(draw_BBOX(el, pred_coord.reshape((5, 4))))
 
         true_sequence = ''
         for i in xrange(np.argmax(sample_targets[0][idx])):
