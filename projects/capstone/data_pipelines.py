@@ -39,11 +39,8 @@ def timeseries_data_pipeline():
             print("Cannot retrieve Quandl data for {0}. Skipping...".format(ticker))
             continue
 
-        scaler = MinMaxScaler()
-        numeric_columns = ["open", "high", "low", "close", "volume", "ex-dividend", "split_ratio",
-                           "adj_open", "adj_high", "adj_low", "adj_close", "adj_volume"]
-
-        ticker_df[numeric_columns] = scaler.fit_transform(ticker_df[numeric_columns])
+        ticker_df = _df_normalizer(ticker_df, ["open", "high", "low", "close", "volume", "ex-dividend", "split_ratio",
+                       "adj_open", "adj_high", "adj_low", "adj_close", "adj_volume"])
 
         # 4. Augment time series data with industry sector information
         ticker_df['sector_id'] = sp500_df.sector_id.loc[index]
@@ -95,6 +92,18 @@ def fundamentals_data_pipeline():
     with open(ticker_df_file, "wb") as file:
         pickle.dump(filtered_df, file)
 
+def _df_normalizer(df, columns):
+    """
+    :param df: to be normalized
+    :param columns: target columns
+    :return: df: dataframe with normalized values in target columns
+    """
+    scaler = MinMaxScaler()
+    df[columns] = scaler.fit_transform(df[columns])
+    return df
+
+
+
 
 def news_data_pipeline(drop_news=True, ticker_list=None):
     '''
@@ -132,6 +141,7 @@ def news_data_pipeline(drop_news=True, ticker_list=None):
         aug_news_df = aug_news_df.assign(close_bool_next_day=pd.Series())
         aug_news_df = aug_news_df.assign(close=pd.Series())
 
+
         for day in news_df.datetime.unique():
             day = pd.Timestamp(day)
             next_day = day + timedelta(1)
@@ -142,20 +152,30 @@ def news_data_pipeline(drop_news=True, ticker_list=None):
             close_previous_day = ticker_df[ticker_df.date == previous_day.date()].close.values
 
 
-            # handling cases when we don't have prices for a given day
-            close_day = 0 if len(close_day) == 0 else close_day[0]
-            close_next_day = 0 if len(close_next_day) == 0 else close_next_day[0]
-            close_previous_day= 0 if len(close_previous_day) == 0 else close_previous_day[0]
-
-            diff_bool = 1 if close_previous_day < close_day else 0
-            diff_bool_next_day = 1 if close_day < close_next_day else 0
-
             aug_news_df.loc[aug_news_df.datetime == day, ['close_bool', 'close_bool_next_day', 'close']] \
-                = diff_bool, diff_bool_next_day, close_day
+                = _convert_labels_news(close_previous_day, close_day, close_next_day)
+
+        # 2. Drop news column
+        if drop_news:
+            aug_news_df = aug_news_df.drop(['content'], axis=1)
+
+        # 3. Normalize data
+        norm_news_df = _df_normalizer(aug_news_df, columns=['close'])
 
         with open(DATA_FOLDER+NEWS_FOLDER + "{0}_df.p".format(ticker), "wb") as file:
-            pickle.dump(aug_news_df, file)
+            pickle.dump(norm_news_df, file)
 
+
+def _convert_labels_news(close_previous_day, close_day, close_next_day):
+    # handling cases when we don't have prices for a given day
+    close_day = 0 if len(close_day) == 0 else close_day[0]
+    close_next_day = 0 if len(close_next_day) == 0 else close_next_day[0]
+    close_previous_day = 0 if len(close_previous_day) == 0 else close_previous_day[0]
+
+    diff_bool = 1 if close_previous_day < close_day else 0
+    diff_bool_next_day = 1 if close_day < close_next_day else 0
+
+    return diff_bool, diff_bool_next_day, close_day
 
 def convert_data_to_batch_timesteps(data, batch_size, timesteps, features, time_range=None):
     """
