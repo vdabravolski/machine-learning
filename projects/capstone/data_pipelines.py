@@ -155,7 +155,7 @@ def news_data_pipeline(drop_news=True, ticker_list=None):
             aug_news_df.loc[aug_news_df.datetime == day, ['close_bool', 'close_bool_next_day', 'close']] \
                 = _convert_labels_news(close_previous_day, close_day, close_next_day)
 
-        # 2. Drop news column
+        # 2. Drop 'content' column
         if drop_news:
             aug_news_df = aug_news_df.drop(['content'], axis=1)
 
@@ -164,6 +164,7 @@ def news_data_pipeline(drop_news=True, ticker_list=None):
 
         with open(DATA_FOLDER+NEWS_FOLDER + "{0}_df.p".format(ticker), "wb") as file:
             pickle.dump(norm_news_df, file)
+
 
 
 def _convert_labels_news(close_previous_day, close_day, close_next_day):
